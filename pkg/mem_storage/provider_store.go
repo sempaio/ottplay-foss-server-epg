@@ -9,6 +9,8 @@ import (
 // Хранилище провайдера Epg
 type EpgChannelData struct {
 	IdHash []byte
+	Id     string // XMLTV identity required by optional M81 suggestions.
+	Names  []string // Verify names after hash lookup to avoid false matches.
 	// TODO: пока нет смысла сохранять имена и Id в виде строк
 	// Id         *string
 	// Names    []*string

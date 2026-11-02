@@ -65,6 +65,10 @@ func PrivateApi(w http.ResponseWriter, r *http.Request) {
 				log.Info().Msg("api: call UpdateProviders")
 				SchedulerCall(P)
 			}
+		case "/api/m81/match":
+			if CheckApiKey(Config.AdminTokens, w, r) {
+				M81Match(w, r)
+			}
 		case "/api/reload":
 			if CheckApiKey(Config.AdminTokens, w, r) {
 				log.Info().Msg("api.config: reload")

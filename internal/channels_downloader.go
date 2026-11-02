@@ -102,6 +102,7 @@ func loadProvider(p *mem_storage.ProviderElement, b []byte) {
 		// Чтение Id канала для pEpg/pIco
 		if !chSkipEpg {
 			chEpg = &mem_storage.EpgChannelData{
+				Id: _ch_meta[0],
 				// TODO: пока нет смысла сохранять имена и Id в виде строк
 				// Id:         mem_storage.DedupStr(mem_storage.Str, &_ch_meta[0]),
 				// Names:      make([]*string, 0, len(_payload)-1),
@@ -122,6 +123,7 @@ func loadProvider(p *mem_storage.ProviderElement, b []byte) {
 		for g := 1; g < len(_chPayload); g++ {
 			_name_hash := xxhash32.ChecksumString32(strings.ToLower(_chPayload[g]))
 			if !chSkipEpg {
+				chEpg.Names = append(chEpg.Names, strings.ToLower(_chPayload[g]))
 				// TODO: пока нет смысла сохранять имена и Id в виде строк
 				// epg_data.Names = append(epg_data.Names, mem_storage.DedupStr(mem_storage.Str, &_payload[g]))
 				pEpg.ByName[_name_hash] = chEpg
