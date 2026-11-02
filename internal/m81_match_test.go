@@ -39,12 +39,19 @@ func TestM81MatchReturnsOriginalIdentityAndRejectsHashOnly(t *testing.T) {
 
 func TestM81MatchRequiresAdminTokenAndBoundsInput(t *testing.T) {
 	old := Config
-	Config = &config.ConfigFile{AdminTokens: []string{"secret-for-test"}}
+	Config = &config.ConfigFile{AdminTokens: []string{"admin-secret-for-test"}, M81MatchTokens: []string{"secret-for-test"}}
 	defer func() { Config = old }()
 	unauthorized := httptest.NewRecorder()
 	PrivateApi(unauthorized, httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[]}`)))
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", unauthorized.Code)
+	}
+	adminOnly := httptest.NewRecorder()
+	adminRequest := httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[]}`))
+	adminRequest.Header.Set("X-Token", "admin-secret-for-test")
+	PrivateApi(adminOnly, adminRequest)
+	if adminOnly.Code != http.StatusUnauthorized {
+		t.Fatalf("admin token unexpectedly authorized M81 matching: %d", adminOnly.Code)
 	}
 	if unauthorized.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal("M81 admin matcher must not expose wildcard CORS")

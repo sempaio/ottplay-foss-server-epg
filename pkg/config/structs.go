@@ -20,6 +20,7 @@ type ConfigFile struct {
 	BaseUrl      string            `json:"base_url"`           // Базовая ссылка для телепрограммы
 	Providers    []ProviderConfig  `json:"providers"`          // Список провайдеров
 	AdminTokens  []string          `json:"admin_tokens"`       // Список токенов для управления сервером
+	M81MatchTokens []string        `json:"m81_match_tokens"`   // Read-only M81 matching credentials
 	EpgTokens    []string          `json:"worker_tokens"`      // Список токенов для управления источниками EPG
 	ProvidersDef _ProvidersDefault `json:"providers_default"`  // Блок default значений для списка провайдеров
 }

@@ -68,7 +68,7 @@ func PrivateApi(w http.ResponseWriter, r *http.Request) {
 				SchedulerCall(P)
 			}
 		case "/api/m81/match":
-			if CheckApiKey(Config.AdminTokens, w, r) {
+			if CheckApiKey(Config.M81MatchTokens, w, r) {
 				M81Match(w, r)
 			}
 		case "/api/reload":

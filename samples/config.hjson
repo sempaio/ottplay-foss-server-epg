@@ -18,6 +18,10 @@
     secret123
   ]
 
+  // Token separado, somente para POST /api/m81/match. Vazio desabilita a rota.
+  // Preencher em configuracao privada; nao reutilizar admin_tokens.
+  m81_match_tokens: []
+
   // Токены для управления источниками EPG
   worker_tokens: [
     worker123
