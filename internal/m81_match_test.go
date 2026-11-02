@@ -1,0 +1,116 @@
+package internal
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	xxhash32 "github.com/OneOfOne/xxhash"
+	"ottplay-foss-server-epg/pkg/config"
+	"ottplay-foss-server-epg/pkg/mem_storage"
+)
+
+func TestM81MatchReturnsOriginalIdentityAndRejectsHashOnly(t *testing.T) {
+	old := PO
+	defer func() { PO = old }()
+	channel := &mem_storage.EpgChannelData{Id: "xml.canal", Names: []string{"canal um"}, LastEpg: time.Now().Add(time.Hour).Unix()}
+	PO.Epg = []*mem_storage.ProviderEpgData{{
+		Prov:   &mem_storage.ProviderElement{Id: "fonte-a"},
+		ById:   mem_storage.HashEpgStruct{xxhash32.ChecksumString32("xml.canal"): channel},
+		ByName: mem_storage.HashEpgStruct{xxhash32.ChecksumString32("canal um"): channel},
+	}}
+	request := httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[{"key":"m81-1","tvg_id":"xml.canal"},{"key":"m81-2","name":"Canal Um"},{"key":"m81-3","tvg_id":"outro"}]}`))
+	w := httptest.NewRecorder()
+	M81Match(w, request)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	var response m81Response
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Suggestions) != 2 || response.Suggestions[0].XMLTVID != "xml.canal" || response.Suggestions[1].SourceID != "fonte-a" {
+		t.Fatalf("unexpected suggestions: %+v", response.Suggestions)
+	}
+}
+
+func TestM81MatchRequiresAdminTokenAndBoundsInput(t *testing.T) {
+	old := Config
+	Config = &config.ConfigFile{AdminTokens: []string{"admin-secret-for-test"}, M81MatchTokens: []string{"secret-for-test"}}
+	defer func() { Config = old }()
+	unauthorized := httptest.NewRecorder()
+	PrivateApi(unauthorized, httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[]}`)))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauthorized.Code)
+	}
+	adminOnly := httptest.NewRecorder()
+	adminRequest := httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[]}`))
+	adminRequest.Header.Set("X-Token", "admin-secret-for-test")
+	PrivateApi(adminOnly, adminRequest)
+	if adminOnly.Code != http.StatusUnauthorized {
+		t.Fatalf("admin token unexpectedly authorized M81 matching: %d", adminOnly.Code)
+	}
+	if unauthorized.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("M81 admin matcher must not expose wildcard CORS")
+	}
+	oversized := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[]}`+strings.Repeat(" ", maxM81MatchBody)))
+	request.Header.Set("X-Token", "secret-for-test")
+	PrivateApi(oversized, request)
+	if oversized.Code != http.StatusBadRequest {
+		t.Fatalf("expected bounded input, got %d", oversized.Code)
+	}
+}
+
+func TestM81MatchDoesNotTrustHashWithoutOriginalIdentity(t *testing.T) {
+	old := PO
+	defer func() { PO = old }()
+	channel := &mem_storage.EpgChannelData{Id: "outro.xml", Names: []string{"outro nome"}, LastEpg: time.Now().Add(time.Hour).Unix()}
+	PO.Epg = []*mem_storage.ProviderEpgData{{
+		Prov:   &mem_storage.ProviderElement{Id: "fonte-a"},
+		ById:   mem_storage.HashEpgStruct{xxhash32.ChecksumString32("alvo.xml"): channel},
+		ByName: mem_storage.HashEpgStruct{xxhash32.ChecksumString32("nome alvo"): channel},
+	}}
+	w := httptest.NewRecorder()
+	M81Match(w, httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[{"key":"m81-1","tvg_id":"alvo.xml","name":"Nome Alvo"}]}`)))
+	var response m81Response
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Suggestions) != 0 {
+		t.Fatalf("hash-only match accepted: %+v", response.Suggestions)
+	}
+}
+
+func TestM81MatchTwentyThousandChannels(t *testing.T) {
+	old := PO
+	defer func() { PO = old }()
+	byID := make(mem_storage.HashEpgStruct, 20000)
+	channels := make([]m81Channel, 20000)
+	for i := range channels {
+		id := fmt.Sprintf("xml-%d", i)
+		channels[i] = m81Channel{Key: fmt.Sprintf("m81-%d", i), TvgID: id}
+		byID[xxhash32.ChecksumString32(id)] = &mem_storage.EpgChannelData{Id: id, LastEpg: time.Now().Add(time.Hour).Unix()}
+	}
+	PO.Epg = []*mem_storage.ProviderEpgData{{Prov: &mem_storage.ProviderElement{Id: "fonte-a"}, ById: byID}}
+	body, err := json.Marshal(m81Request{Channels: channels})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	M81Match(w, httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(string(body))))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d", w.Code)
+	}
+	var result m81Response
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Suggestions) != 20000 || result.Suggestions[19999].XMLTVID != "xml-19999" {
+		t.Fatalf("lost or changed matches: %d", len(result.Suggestions))
+	}
+}

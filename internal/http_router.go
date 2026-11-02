@@ -57,13 +57,19 @@ func RouterPublic(w http.ResponseWriter, r *http.Request) {
 }
 
 func PrivateApi(w http.ResponseWriter, r *http.Request) {
-	addCors(w)
+	if r.URL.Path != "/api/m81/match" {
+		addCors(w)
+	}
 
 	switch r.URL.Path {
 		case "/api/epg/update-providers":
 			if CheckApiKey(Config.AdminTokens, w, r) {
 				log.Info().Msg("api: call UpdateProviders")
 				SchedulerCall(P)
+			}
+		case "/api/m81/match":
+			if CheckApiKey(Config.M81MatchTokens, w, r) {
+				M81Match(w, r)
 			}
 		case "/api/reload":
 			if CheckApiKey(Config.AdminTokens, w, r) {

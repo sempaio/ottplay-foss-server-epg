@@ -12,6 +12,9 @@ import (
 	"ottplay-foss-server-epg/pkg/mem_storage"
 )
 
+// Accommodates large channel batches while preventing unbounded allocations.
+const MaxMatchBodyBytes = 8 << 20
+
 // Разделяет и валидирует запрос на 3 части
 func SplitMatchBody(r *http.Request) [][]byte {
   // Валидация запроса
@@ -19,10 +22,14 @@ func SplitMatchBody(r *http.Request) [][]byte {
     return nil
   }
   // Чтение всего тела
-  body, err := io.ReadAll(r.Body)
+  body, err := io.ReadAll(io.LimitReader(r.Body, MaxMatchBodyBytes+1))
   r.Body.Close()
   if err != nil && err != io.EOF {
     log.Error().Err(err).Msgf("/match-*/ - cannot read body!")
+    return nil
+  }
+  if len(body) > MaxMatchBodyBytes {
+    log.Warn().Msg("/match-*/ - request body too large")
     return nil
   }
   out := bytes.SplitN(body, c_sep_block, 4)
@@ -111,7 +118,7 @@ func PrioritizeUserProviders[T *mem_storage.ProviderEpgData|*mem_storage.Provide
       listUser = Slice_AppendUniq(listUser, provUser)
     } else {
       // НЕ Знаем: Логируем его хеш и ссылку (частых можно будет добавлять)
-      log.Warn().Msgf("match.epg: unlisted provider - %d: %s", hashUserXmltv, reqTvgUrls[i])
+      log.Warn().Msgf("match.epg: unlisted provider hash - %d", hashUserXmltv)
     }
   }
 
