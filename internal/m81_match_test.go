@@ -2,6 +2,7 @@ package internal
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -82,5 +83,34 @@ func TestM81MatchDoesNotTrustHashWithoutOriginalIdentity(t *testing.T) {
 	}
 	if len(response.Suggestions) != 0 {
 		t.Fatalf("hash-only match accepted: %+v", response.Suggestions)
+	}
+}
+
+func TestM81MatchTwentyThousandChannels(t *testing.T) {
+	old := PO
+	defer func() { PO = old }()
+	byID := make(mem_storage.HashEpgStruct, 20000)
+	channels := make([]m81Channel, 20000)
+	for i := range channels {
+		id := fmt.Sprintf("xml-%d", i)
+		channels[i] = m81Channel{Key: fmt.Sprintf("m81-%d", i), TvgID: id}
+		byID[xxhash32.ChecksumString32(id)] = &mem_storage.EpgChannelData{Id: id, LastEpg: time.Now().Add(time.Hour).Unix()}
+	}
+	PO.Epg = []*mem_storage.ProviderEpgData{{Prov: &mem_storage.ProviderElement{Id: "fonte-a"}, ById: byID}}
+	body, err := json.Marshal(m81Request{Channels: channels})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	M81Match(w, httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(string(body))))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d", w.Code)
+	}
+	var result m81Response
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Suggestions) != 20000 || result.Suggestions[19999].XMLTVID != "xml-19999" {
+		t.Fatalf("lost or changed matches: %d", len(result.Suggestions))
 	}
 }
