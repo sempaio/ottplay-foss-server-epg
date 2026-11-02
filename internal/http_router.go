@@ -57,7 +57,9 @@ func RouterPublic(w http.ResponseWriter, r *http.Request) {
 }
 
 func PrivateApi(w http.ResponseWriter, r *http.Request) {
-	addCors(w)
+	if r.URL.Path != "/api/m81/match" {
+		addCors(w)
+	}
 
 	switch r.URL.Path {
 		case "/api/epg/update-providers":

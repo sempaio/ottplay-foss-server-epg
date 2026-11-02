@@ -46,6 +46,9 @@ func TestM81MatchRequiresAdminTokenAndBoundsInput(t *testing.T) {
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", unauthorized.Code)
 	}
+	if unauthorized.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("M81 admin matcher must not expose wildcard CORS")
+	}
 	oversized := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/m81/match", strings.NewReader(`{"channels":[]}`+strings.Repeat(" ", maxM81MatchBody)))
 	request.Header.Set("X-Token", "secret-for-test")
